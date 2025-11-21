@@ -1512,10 +1512,11 @@ export class TransferService {
     });
   }
 
-  //@requireAuth()
+  @requireAuth()
   static async getCustomerBookings(): Promise<TransferRow[]> {
     const auth = getContext().get("auth");
-    const userId = "346402675442587254"//auth.sub as string;
+    // const userId = "346402675442587254"; //auth.sub as string;
+    const userId = auth.sub;
     if (!userId) throw new Error("Anonymous");
 
     return TransferService.listTransfers({ customerId: userId });
