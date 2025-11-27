@@ -1,0 +1,53 @@
+// schema.prisma
+
+generator client {
+  provider        = "prisma-client-js"
+  runtime         = "workerd" // alias: "cloudflare"
+  previewFeatures = ["driverAdapters"]
+  // output optional for prisma-client-js; keep default unless you changed your build setup
+}
+
+datasource db {
+  provider = "sqlite"
+  // No url: D1 is provided via adapter binding in Workers
+}
+
+enum TransferState {
+  pending
+  confirmed
+  complete
+  canceled
+  terminated
+}
+
+model Transfer {
+  transferId      String        @id @default(uuid())
+
+  // Core ride data (matches your existing domain / sheets)
+  rideDateISO     String        // YYYY-MM-DD
+  rideTime        String        // HH:mm
+  pickup          String
+  dropoff         String
+  roomOrName      String?
+  vehicle         String?
+  amountEUR       Float?
+  payment         String?
+
+  // Actors
+  customerId      String
+  customerName    String?
+  driverId        String?
+  driverName      String?
+
+  // State machine
+  state           TransferState @default(pending)
+
+  // Meta timestamps
+  requestedAtISO  DateTime      @default(now())
+  updatedAtISO    DateTime      @updatedAt
+
+  @@index([rideDateISO])
+  @@index([customerId])
+  @@index([driverId])
+  @@index([state])
+}

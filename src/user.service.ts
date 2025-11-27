@@ -3,15 +3,18 @@
 import { getContext, getEnv, requireAuth } from "@getcronit/pylon";
 import validator from "validator";
 import { InvalidInputError } from "./errors/general.errors";
-import { EmailOrUsernameAlreadyExistsError, UserNotFoundError } from "./errors/user.errors";
+import {
+  EmailOrUsernameAlreadyExistsError,
+  UserNotFoundError,
+} from "./errors/user.errors";
 
 // --------------------------------------------------
 // Example interfaces for ZITADEL list users response
 // --------------------------------------------------
 export interface GetAllUsersResponse {
   details: {
-    totalResult: string;       // e.g. "345"
-    viewTimestamp: string;     // e.g. "2025-01-17T04:43:59.432613Z"
+    totalResult: string; // e.g. "345"
+    viewTimestamp: string; // e.g. "2025-01-17T04:43:59.432613Z"
   };
   result: ZitadelUser[];
 }
@@ -43,6 +46,21 @@ export interface UserRoute {
   vehicle?: string;
 }
 
+/**
+ * Web push subscription metadata stored per user.
+ * Used by NotificationService but persisted via UserService.
+ */
+export interface UserPushSubscription {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys?: {
+    p256dh?: string;
+    auth?: string;
+  };
+  deviceId?: string;
+  userAgent?: string;
+}
+
 interface ZitadelUser {
   id: string;
   details: {
@@ -51,7 +69,7 @@ interface ZitadelUser {
     changeDate: string;
     resourceOwner: string;
   };
-  state: string;                // e.g. "USER_STATE_INITIAL"
+  state: string; // e.g. "USER_STATE_INITIAL"
   userName: string;
   loginNames: string[];
   preferredLoginName: string;
@@ -59,7 +77,7 @@ interface ZitadelUser {
   // URL to the rendered avatar image (if set in ZITADEL)
   avatarUrl?: string;
 
-  human?: HumanUser;            // Might be undefined if user is not "human"
+  human?: HumanUser; // Might be undefined if user is not "human"
 
   // Aggregated user grants (roles per project) for this user (added by this service)
   grants?: ZitadelUserGrant[];
@@ -92,7 +110,7 @@ export interface HumanUser {
   email?: {
     email?: string;
   };
-  phone?: Record<string, any>;  // Adjust if you know the exact phone fields
+  phone?: Record<string, any>; // Adjust if you know the exact phone fields
 }
 
 // --------------------------------------------------
@@ -141,14 +159,14 @@ export type UserUpdateInput = {
 
 export type AuthorizationCreateInput = {
   userId: string;
-  projectId?: string;          // either projectId or projectGrantId
+  projectId?: string; // either projectId or projectGrantId
   projectGrantId?: string;
-  roleKeys: string[];          // application role keys
+  roleKeys: string[]; // application role keys
 };
 
 export type AuthorizationUpdateInput = {
-  authorizationId: string;     // existing authorization id from ListAuthorizations
-  roleKeys: string[];          // new complete set of role keys for that authorization
+  authorizationId: string; // existing authorization id from ListAuthorizations
+  roleKeys: string[]; // new complete set of role keys for that authorization
 };
 
 export class UserService {
@@ -181,7 +199,7 @@ export class UserService {
       "Content-Type": "application/json",
       Accept: "application/json",
       Authorization: `Bearer ${UserService.apiKey()}`,
-      ...(organizationId ? { "x-zitadel-orgid": organizationId } : {})
+      ...(organizationId ? { "x-zitadel-orgid": organizationId } : {}),
     };
   }
 
@@ -202,7 +220,9 @@ export class UserService {
     throw new Error("No base64 encoder available for metadata values");
   }
 
-  private static decodeMetadataValue(value: string | undefined | null): string | undefined {
+  private static decodeMetadataValue(
+    value: string | undefined | null
+  ): string | undefined {
     if (!value) return undefined;
     const g: any = globalThis as any;
     if (typeof g?.atob === "function") {
@@ -228,7 +248,7 @@ export class UserService {
     try {
       const res = await fetch(url, {
         method: "GET",
-        headers: UserService.headers(organizationId)
+        headers: UserService.headers(organizationId),
       });
 
       if (res.status === 404) {
@@ -288,10 +308,10 @@ export class UserService {
         metadata: [
           {
             key,
-            value: encoded
-          }
-        ]
-      })
+            value: encoded,
+          },
+        ],
+      }),
     });
 
     return UserService.parseOrThrow(res);
@@ -310,7 +330,7 @@ export class UserService {
     try {
       const res = await fetch(url, {
         method: "GET",
-        headers: UserService.headers(organizationId)
+        headers: UserService.headers(organizationId),
       });
 
       if (res.status === 404) {
@@ -334,7 +354,9 @@ export class UserService {
       const encoded =
         payload?.metadata?.value ??
         payload?.value ??
-        (Array.isArray(payload?.result) ? payload.result[0]?.value : undefined);
+        (Array.isArray(payload?.result)
+          ? payload.result[0]?.value
+          : undefined);
 
       const decoded = UserService.decodeMetadataValue(encoded);
       if (!decoded) return null;
@@ -385,10 +407,10 @@ export class UserService {
         metadata: [
           {
             key,
-            value: encoded
-          }
-        ]
-      })
+            value: encoded,
+          },
+        ],
+      }),
     });
 
     return UserService.parseOrThrow(res);
@@ -469,7 +491,7 @@ export class UserService {
 
       const response: Response = await fetch(url, {
         method: "GET",
-        headers: UserService.headers()
+        headers: UserService.headers(),
       });
 
       const data = (await response.json().catch(() => ({}))) as any;
@@ -513,7 +535,9 @@ export class UserService {
         !(await UserService.getIsUnique(username)) ||
         !(await UserService.getIsUnique(emailAddress))
       ) {
-        throw new EmailOrUsernameAlreadyExistsError(`${username} <${emailAddress}>`);
+        throw new EmailOrUsernameAlreadyExistsError(
+          `${username} <${emailAddress}>`
+        );
       }
 
       const response: Response = await fetch(url, {
@@ -524,25 +548,29 @@ export class UserService {
           profile: {
             firstName: values.details?.firstName ?? "",
             lastName: values.details?.lastName ?? "",
-            preferredLanguage: "en"
+            preferredLanguage: "en",
           },
-          ...(values.hashedPassword ? { hashedPassword: { value: values.hashedPassword } } : {}),
+          ...(values.hashedPassword
+            ? { hashedPassword: { value: values.hashedPassword } }
+            : {}),
           email: {
             email: values.emailAddress,
-            isEmailVerified: skipEmailVerification || false
+            isEmailVerified: skipEmailVerification || false,
           },
           ...(values.password
             ? {
                 password: values.password,
-                passwordChangeRequired: false
+                passwordChangeRequired: false,
               }
-            : {})
-        })
+            : {}),
+        }),
       });
 
       const data = (await response.json().catch(() => ({}))) as UserCreateResponse;
       if (!response.ok) {
-        throw new InvalidInputError(data?.details?.toString() || "Something has gone Wrong");
+        throw new InvalidInputError(
+          data?.details?.toString() || "Something has gone Wrong"
+        );
       }
 
       return data;
@@ -558,8 +586,10 @@ export class UserService {
   // --------------------------------------------------
 
   /**
-   * List all project roles for a given project (v2 ProjectService).
-   * We only expose key + displayName (no group/description).
+   * List all project roles for a given project.
+   *
+   * - Normal projects: use v2 ProjectService.ListProjectRoles
+   * - CMS granted project: use v1 mgmt Search Granted Project Roles
    *
    * Uses a per-request cache so we only call this once per projectId (+orgId).
    */
@@ -581,10 +611,61 @@ export class UserService {
       return existingPromise;
     }
 
-    const url = `${UserService.base()}/zitadel.project.v2.ProjectService/ListProjectRoles`;
-
     const promise = (async () => {
-      try {
+      const env: any = UserService.env();
+      const authProjectId = env?.AUTH_PROJECT_ID;
+      const authProjectGrantId = env?.AUTH_PROJECT_GRANT_ID;
+
+      const isGrantedCmsProject =
+        authProjectId &&
+        authProjectGrantId &&
+        projectId === authProjectId;
+
+      // v1: Search Granted Project Roles (for granted CMS project)
+      const grantedRolesRequest = async (): Promise<ProjectRole[]> => {
+        const url = `${UserService.base()}/management/v1/granted_projects/${encodeURIComponent(
+          authProjectId
+        )}/grants/${encodeURIComponent(
+          authProjectGrantId
+        )}/roles/_search`;
+
+        const res = await fetch(url, {
+          method: "GET",
+          headers: UserService.headers(organizationId),
+        });
+
+        const data = (await res.json().catch(() => ({}))) as any;
+
+        if (!res.ok) {
+          console.error(
+            "Failed to fetch granted project roles for project",
+            projectId,
+            "-",
+            data?.message ?? `HTTP ${res.status}`
+          );
+          return [];
+        }
+
+        const rolesRaw =
+          (Array.isArray(data.result) && data.result) ||
+          (Array.isArray(data.projectRoles) && data.projectRoles) ||
+          (Array.isArray(data.roles) && data.roles) ||
+          [];
+
+        const roles: ProjectRole[] = rolesRaw
+          .map((r: any) => ({
+            key: r.roleKey ?? r.key ?? "",
+            displayName: r.displayName ?? r.name ?? r.roleKey ?? r.key,
+          }))
+          .filter((r: ProjectRole) => r.key);
+
+        return roles;
+      };
+
+      // v2: normal project roles
+      const v2RolesRequest = async (): Promise<ProjectRole[]> => {
+        const url = `${UserService.base()}/zitadel.project.v2.ProjectService/ListProjectRoles`;
+
         const res = await fetch(url, {
           method: "POST",
           headers: UserService.headers(organizationId),
@@ -592,9 +673,9 @@ export class UserService {
             projectId,
             pagination: {
               offset: 0,
-              limit
-            }
-          })
+              limit,
+            },
+          }),
         });
 
         const data = (await res.json().catch(() => ({}))) as any;
@@ -606,28 +687,34 @@ export class UserService {
             "-",
             data?.message ?? `HTTP ${res.status}`
           );
-          const empty: ProjectRole[] = [];
-          roleCache.set(cacheKey, empty);
-          return empty;
+          return [];
         }
 
-        const rolesRaw = (data.projectRoles ?? data.result ?? []) as any[];
+        const rolesRaw =
+          (Array.isArray(data.projectRoles) && data.projectRoles) ||
+          (Array.isArray(data.result) && data.result) ||
+          (Array.isArray(data.roles) && data.roles) ||
+          [];
 
         const roles: ProjectRole[] = rolesRaw
-          .map((r) => ({
+          .map((r: any) => ({
             key: r.roleKey ?? r.key ?? "",
-            displayName: r.displayName
+            displayName: r.displayName ?? r.name ?? r.roleKey ?? r.key,
           }))
-          .filter((r) => r.key);
+          .filter((r: ProjectRole) => r.key);
+
+        return roles;
+      };
+
+      try {
+        const roles = isGrantedCmsProject
+          ? await grantedRolesRequest()
+          : await v2RolesRequest();
 
         roleCache.set(cacheKey, roles);
         return roles;
       } catch (err) {
-        console.error(
-          "Failed to fetch project roles for project",
-          projectId,
-          err
-        );
+        console.error("Failed to fetch project roles for project", projectId, err);
         const empty: ProjectRole[] = [];
         roleCache.set(cacheKey, empty);
         return empty;
@@ -662,16 +749,16 @@ export class UserService {
           query: {
             offset: "0",
             limit: 100,
-            asc: true
+            asc: true,
           },
           queries: [
             {
               user_id_query: {
-                user_id: userId
-              }
-            }
-          ]
-        })
+                user_id: userId,
+              },
+            },
+          ],
+        }),
       });
 
       const data = (await res.json().catch(() => ({}))) as any;
@@ -695,8 +782,8 @@ export class UserService {
         const roleKeys: string[] = Array.isArray(g.roleKeys)
           ? g.roleKeys.filter((r: any) => typeof r === "string")
           : Array.isArray(g.roles)
-            ? g.roles.filter((r: any) => typeof r === "string")
-            : [];
+          ? g.roles.filter((r: any) => typeof r === "string")
+          : [];
 
         let roles: ProjectRole[] = [];
 
@@ -722,7 +809,7 @@ export class UserService {
             const match = projectRoles?.find((r) => r.key === key);
             return {
               key,
-              displayName: match?.displayName
+              displayName: match?.displayName,
             };
           });
         } else {
@@ -737,7 +824,7 @@ export class UserService {
           projectId: g.projectId,
           projectName: g.projectName,
           state: g.state,
-          roles
+          roles,
         };
 
         grants.push(grant);
@@ -785,7 +872,7 @@ export class UserService {
     try {
       const res = await fetch(url, {
         method: "GET",
-        headers: UserService.headers(organizationId)
+        headers: UserService.headers(organizationId),
       });
 
       const data = (await res.json().catch(() => ({}))) as any;
@@ -804,7 +891,8 @@ export class UserService {
       const avatarUrl =
         (typeof u?.avatarUrl === "string" && u.avatarUrl) ||
         (typeof u?.profile?.avatarUrl === "string" && u.profile.avatarUrl) ||
-        (typeof u?.human?.profile?.avatarUrl === "string" && u.human.profile.avatarUrl) ||
+        (typeof u?.human?.profile?.avatarUrl === "string" &&
+          u.human.profile.avatarUrl) ||
         undefined;
 
       return avatarUrl;
@@ -920,7 +1008,7 @@ export class UserService {
             if (!existing || (!existing.displayName && r.displayName)) {
               aggregatedRoleMap.set(r.key, {
                 key: r.key,
-                displayName: r.displayName
+                displayName: r.displayName,
               });
             }
           }
@@ -938,7 +1026,7 @@ export class UserService {
       monthlyCount: () => getMonthlyCountLazy(),
 
       // Lazy JSON routes metadata
-      routes: () => getRoutesLazy()
+      routes: () => getRoutesLazy(),
     };
 
     return enriched as ZitadelUser;
@@ -962,12 +1050,14 @@ export class UserService {
     }
 
     const promise = (async () => {
-      const url = `${UserService.base()}/management/v1/users/${encodeURIComponent(userId)}`;
+      const url = `${UserService.base()}/management/v1/users/${encodeURIComponent(
+        userId
+      )}`;
 
       try {
         const response = await fetch(url, {
           method: "GET",
-          headers: UserService.headers(organizationId)
+          headers: UserService.headers(organizationId),
         });
 
         const data = (await response.json().catch(() => ({}))) as any;
@@ -976,7 +1066,9 @@ export class UserService {
           if (response.status === 404) {
             throw new UserNotFoundError(userId);
           }
-          throw new InvalidInputError(data?.message || "Something has gone Wrong");
+          throw new InvalidInputError(
+            data?.message || "Something has gone Wrong"
+          );
         }
 
         const user = (data?.user ?? data) as ZitadelUser;
@@ -1013,14 +1105,16 @@ export class UserService {
         headers: UserService.headers(organizationId),
         body: JSON.stringify({
           limit,
-          offset: 0
-        })
+          offset: 0,
+        }),
       });
 
       const payload = (await response.json().catch(() => ({}))) as any;
 
       if (!response.ok) {
-        throw new InvalidInputError(payload?.message || "Something has gone Wrong");
+        throw new InvalidInputError(
+          payload?.message || "Something has gone Wrong"
+        );
       }
 
       const data = payload as GetAllUsersResponse;
@@ -1030,7 +1124,9 @@ export class UserService {
 
       const enriched = users.map((user) => {
         if (!user?.id) return user as ZitadelUser;
-        const cacheKey = organizationId ? `${organizationId}:${user.id}` : user.id;
+        const cacheKey = organizationId
+          ? `${organizationId}:${user.id}`
+          : user.id;
         let existing = cache.get(cacheKey);
         if (!existing) {
           existing = UserService.buildLazyZitadelUser(user, organizationId);
@@ -1056,14 +1152,16 @@ export class UserService {
         headers: UserService.headers(),
         body: JSON.stringify({
           limit: 1,
-          offset: 0
-        })
+          offset: 0,
+        }),
       });
 
       const payload = (await response.json().catch(() => ({}))) as any;
 
       if (!response.ok) {
-        throw new InvalidInputError(payload?.message || "Something has gone Wrong");
+        throw new InvalidInputError(
+          payload?.message || "Something has gone Wrong"
+        );
       }
 
       const data = payload as GetAllUsersResponse;
@@ -1079,6 +1177,9 @@ export class UserService {
   /**
    * NEW: Return all users that have the given role key.
    * Uses listAllZitadelUsers + lazy grants resolver.
+   *
+   * NOTE: Filtering itself is sequential (for-of + await) to avoid
+   * too many concurrent HTTP requests.
    */
   static async listUsersByRole(
     roleKey: string,
@@ -1136,14 +1237,14 @@ export class UserService {
 
     const body: any = {
       projectId,
-      roleKey
+      roleKey,
     };
     if (displayName) body.displayName = displayName;
 
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
 
     return UserService.parseOrThrow(res);
@@ -1164,8 +1265,8 @@ export class UserService {
       headers: UserService.headers(organizationId),
       body: JSON.stringify({
         projectId,
-        roleKey
-      })
+        roleKey,
+      }),
     });
 
     return UserService.parseOrThrow(res);
@@ -1178,47 +1279,55 @@ export class UserService {
     const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}`;
     const res = await fetch(url, {
       method: "DELETE",
-      headers: UserService.headers(organizationId)
+      headers: UserService.headers(organizationId),
     });
     return UserService.parseOrThrow(res);
   }
 
   static async deactivateUser(userId: string, organizationId?: string) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/deactivate`;
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/deactivate`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify({})
+      body: JSON.stringify({}),
     });
     return UserService.parseOrThrow(res);
   }
 
   static async reactivateUser(userId: string, organizationId?: string) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/reactivate`;
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/reactivate`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify({})
+      body: JSON.stringify({}),
     });
     return UserService.parseOrThrow(res);
   }
 
   static async lockUser(userId: string, organizationId?: string) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/lock`;
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/lock`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify({})
+      body: JSON.stringify({}),
     });
     return UserService.parseOrThrow(res);
   }
 
   static async unlockUser(userId: string, organizationId?: string) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/unlock`;
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/unlock`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify({})
+      body: JSON.stringify({}),
     });
     return UserService.parseOrThrow(res);
   }
@@ -1241,14 +1350,14 @@ export class UserService {
     if (changes.password) {
       payload.newPassword = {
         password: changes.password.password,
-        changeRequired: !!changes.password.changeRequired
+        changeRequired: !!changes.password.changeRequired,
       };
     }
 
     const res = await fetch(url, {
       method: "PATCH",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     return UserService.parseOrThrow(res);
@@ -1264,66 +1373,89 @@ export class UserService {
     changeRequired = false,
     organizationId?: string
   ) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/password`;
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/password`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
       body: JSON.stringify({
         newPassword: {
           password: newPassword,
-          changeRequired
-        }
-      })
+          changeRequired,
+        },
+      }),
     });
     return UserService.parseOrThrow(res);
   }
 
   static async requestPasswordReset(userId: string, organizationId?: string) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/password_reset`;
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/password_reset`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify({})
+      body: JSON.stringify({}),
     });
     return UserService.parseOrThrow(res);
   }
 
   static async sendEmailVerification(userId: string, organizationId?: string) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/email/send`;
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/email/send`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify({})
+      body: JSON.stringify({}),
     });
     return UserService.parseOrThrow(res);
   }
 
-  static async resendEmailVerification(userId: string, organizationId?: string) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/email/resend`;
+  static async resendEmailVerification(
+    userId: string,
+    organizationId?: string
+  ) {
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/email/resend`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify({})
+      body: JSON.stringify({}),
     });
     return UserService.parseOrThrow(res);
   }
 
-  static async verifyEmail(userId: string, code: string, organizationId?: string) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/email/verify`;
+  static async verifyEmail(
+    userId: string,
+    code: string,
+    organizationId?: string
+  ) {
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/email/verify`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify({ code })
+      body: JSON.stringify({ code }),
     });
     return UserService.parseOrThrow(res);
   }
 
-  static async setPhone(userId: string, phone: string, organizationId?: string) {
-    const url = `${UserService.base()}/v2/users/${encodeURIComponent(userId)}/phone`;
+  static async setPhone(
+    userId: string,
+    phone: string,
+    organizationId?: string
+  ) {
+    const url = `${UserService.base()}/v2/users/${encodeURIComponent(
+      userId
+    )}/phone`;
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify({ phone })
+      body: JSON.stringify({ phone }),
     });
     return UserService.parseOrThrow(res);
   }
@@ -1332,45 +1464,54 @@ export class UserService {
   // NEW: Role / Authorization management (assign roles to user on a project)
   // --------------------------------------------------
 
-  static async createAuthorization(input: AuthorizationCreateInput, organizationId?: string) {
+  static async createAuthorization(
+    input: AuthorizationCreateInput,
+    organizationId?: string
+  ) {
     const url = `${UserService.base()}/zitadel.authorization.v2.AuthorizationService/CreateAuthorization`;
     const body = {
       userId: input.userId,
       roleKeys: input.roleKeys,
       ...(input.projectId ? { projectId: input.projectId } : {}),
-      ...(input.projectGrantId ? { projectGrantId: input.projectGrantId } : {})
+      ...(input.projectGrantId ? { projectGrantId: input.projectGrantId } : {}),
     };
 
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
     return UserService.parseOrThrow(res);
   }
 
-  static async updateAuthorization(input: AuthorizationUpdateInput, organizationId?: string) {
+  static async updateAuthorization(
+    input: AuthorizationUpdateInput,
+    organizationId?: string
+  ) {
     const url = `${UserService.base()}/zitadel.authorization.v2.AuthorizationService/UpdateAuthorization`;
     const body = {
       authorizationId: input.authorizationId,
-      roleKeys: input.roleKeys
+      roleKeys: input.roleKeys,
     };
 
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
     return UserService.parseOrThrow(res);
   }
 
-  static async deleteAuthorization(authorizationId: string, organizationId?: string) {
+  static async deleteAuthorization(
+    authorizationId: string,
+    organizationId?: string
+  ) {
     const url = `${UserService.base()}/zitadel.authorization.v2.AuthorizationService/DeleteAuthorization`;
     const body = { authorizationId };
     const res = await fetch(url, {
       method: "POST",
       headers: UserService.headers(organizationId),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
     return UserService.parseOrThrow(res);
   }
@@ -1387,7 +1528,12 @@ export class UserService {
     revenue: number,
     organizationId?: string
   ) {
-    return UserService.setUserNumericMetadata(userId, "revenue", revenue, organizationId);
+    return UserService.setUserNumericMetadata(
+      userId,
+      "revenue",
+      revenue,
+      organizationId
+    );
   }
 
   static async setUserTransferCount(
@@ -1437,7 +1583,11 @@ export class UserService {
     userId: string,
     organizationId?: string
   ): Promise<UserRoute[] | null> {
-    return UserService.getUserJsonMetadata<UserRoute[]>(userId, "routes", organizationId);
+    return UserService.getUserJsonMetadata<UserRoute[]>(
+      userId,
+      "routes",
+      organizationId
+    );
   }
 
   static async setUserRoutes(
@@ -1445,7 +1595,40 @@ export class UserService {
     routes: UserRoute[],
     organizationId?: string
   ) {
-    return UserService.setUserJsonMetadata(userId, "routes", routes, organizationId);
+    return UserService.setUserJsonMetadata(
+      userId,
+      "routes",
+      routes,
+      organizationId
+    );
+  }
+
+  // --------------------------------------------------
+  // NEW: Push subscriptions metadata (JSON list)
+  // --------------------------------------------------
+
+  static async getUserPushSubscriptions(
+    userId: string,
+    organizationId?: string
+  ): Promise<UserPushSubscription[] | null> {
+    return UserService.getUserJsonMetadata<UserPushSubscription[]>(
+      userId,
+      "pushSubscriptions",
+      organizationId
+    );
+  }
+
+  static async setUserPushSubscriptions(
+    userId: string,
+    subscriptions: UserPushSubscription[],
+    organizationId?: string
+  ) {
+    return UserService.setUserJsonMetadata(
+      userId,
+      "pushSubscriptions",
+      subscriptions,
+      organizationId
+    );
   }
 }
 

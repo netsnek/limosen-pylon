@@ -1,6 +1,7 @@
 import { getContext, getEnv, requireAuth } from "@getcronit/pylon";
 import validator from "validator";
 import { UserService } from "./user.service";
+import { D1Service } from "./d1.service";
 import {
   COLOR,
   MONTH_HEADERS_VISIBLE,
@@ -486,6 +487,34 @@ function transferToMasterRow(t: TransferRow): SheetValue[] {
     t.state,
     t.requestedAtISO
   ];
+}
+
+// --- NEW: map D1 Prisma transfer row to TransferRow ---
+function d1RecordToTransferRow(rec: any): TransferRow {
+  const requestedAt =
+    rec?.requestedAtISO instanceof Date
+      ? rec.requestedAtISO.toISOString()
+      : typeof rec?.requestedAtISO === "string"
+      ? rec.requestedAtISO
+      : new Date().toISOString();
+
+  return {
+    transferId: rec.transferId,
+    customerId: rec.customerId,
+    customerName: rec.customerName ?? undefined,
+    rideDateISO: rec.rideDateISO,
+    rideTime: rec.rideTime,
+    pickup: rec.pickup,
+    dropoff: rec.dropoff,
+    roomOrName: rec.roomOrName ?? undefined,
+    vehicle: rec.vehicle ?? undefined,
+    amountEUR: typeof rec.amountEUR === "number" ? rec.amountEUR : undefined,
+    payment: rec.payment ?? undefined,
+    driverId: rec.driverId ?? undefined,
+    driverName: rec.driverName ?? undefined,
+    state: (rec.state ?? "pending") as TransferState,
+    requestedAtISO: requestedAt
+  };
 }
 
 // ---------- Utilities ----------
@@ -1304,7 +1333,7 @@ export class TransferService {
     payment?: string
   ): Promise<{ transferId: string }> {
     const auth = getContext().get("auth");
-    const userId = "346402675442587254"//auth.sub as string;
+    const userId = "346402675442587254";//auth.sub as string;
     if (!userId) throw new Error("Anonymous");
 
     return TransferService.createTransfer(
@@ -1348,6 +1377,49 @@ export class TransferService {
     );
   }
 
+  // --- NEW: assign price in sheet + D1 ---
+  static async assignPrice(
+    transferId: string,
+    amountEUR: number
+  ): Promise<void> {
+    if (typeof amountEUR !== "number" || !Number.isFinite(amountEUR)) {
+      throw new Error("amountEUR must be a finite number");
+    }
+
+    const accessToken = await googleAccessToken();
+    await ensureMaster(accessToken);
+
+    const { rowIdx, row } = await getMasterRowWithIndex(transferId, accessToken);
+    if (!rowIdx || !row) {
+      throw new Error("transferId not found");
+    }
+
+    // Update price in master sheet (column J)
+    await valuesUpdate(
+      `${MASTER_TITLE}!J${rowIdx}:J${rowIdx}`,
+      [[amountEUR]],
+      accessToken
+    );
+
+    // Also persist to D1 (Prisma / SQLite)
+    try {
+      const env: any = getEnv();
+      const db = env.DB;
+      if (db && typeof db.prepare === "function") {
+        await db
+          .prepare("UPDATE Transfer SET amountEUR = ? WHERE transferId = ?")
+          .bind(amountEUR, transferId)
+          .run();
+      } else {
+        console.warn(
+          "D1 binding 'DB' not available; skipping D1 update for assignPrice"
+        );
+      }
+    } catch (err) {
+      console.error("Error updating D1 Transfer.amountEUR in assignPrice", err);
+    }
+  }
+
   static async markConfirmed(transferId: string): Promise<void> {
     const accessToken = await googleAccessToken();
     await ensureMaster(accessToken);
@@ -1364,13 +1436,13 @@ export class TransferService {
     );
   }
 
-  //@requireAuth()
+  @requireAuth()
   static async cancelTransfer(transferId: string): Promise<void> {
     const accessToken = await googleAccessToken();
     await ensureMaster(accessToken);
 
     const auth = getContext().get("auth");
-    const userId = "346402675442587254"//auth.sub as string;
+    const userId = auth.sub as string;
     if (!userId) throw new Error("Anonymous");
 
     const { rowIdx, row } = await getMasterRowWithIndex(transferId, accessToken);
@@ -1496,20 +1568,15 @@ export class TransferService {
     fromDateISO?: string;
     toDateISO?: string;
   }): Promise<TransferRow[]> {
-    const accessToken = await googleAccessToken();
-    const range = `${MASTER_TITLE}!A2:${colLetter(MASTER_HEADERS.length)}`;
-    const { values } = await valuesGet(range, accessToken);
-    const rows = (values ?? [])
-      .map((r) => rowToTransfer(r))
-      .filter(Boolean) as TransferRow[];
-    return rows.filter((r) => {
-      if (opts?.customerId && r.customerId !== opts.customerId) return false;
-      if (opts?.driverId && r.driverId !== opts.driverId) return false;
-      if (opts?.state && r.state !== opts.state) return false;
-      if (opts?.fromDateISO && r.rideDateISO < opts.fromDateISO) return false;
-      if (opts?.toDateISO && r.rideDateISO > opts.toDateISO) return false;
-      return true;
+    const d1Rows = await D1Service.getD1AllTransfers({
+      state: opts?.state,
+      customerId: opts?.customerId,
+      driverId: opts?.driverId,
+      fromDateISO: opts?.fromDateISO,
+      toDateISO: opts?.toDateISO
     });
+
+    return d1Rows.map((rec: any) => d1RecordToTransferRow(rec));
   }
 
   @requireAuth()

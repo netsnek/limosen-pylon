@@ -173,3 +173,6 @@ dist
 
 # Pylon project
 .pylon
+
+dev.db
+.backup
